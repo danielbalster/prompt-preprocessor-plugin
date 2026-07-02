@@ -1,0 +1,51 @@
+{
+  "name": "@dbalster/prompt-preprocessor",
+  "version": "0.1.0",
+  "description": "Kilo/OpenCode TypeScript plugin that preprocesses skills and system prompts before they reach the AI model",
+  "license": "MIT",
+  "author": "Daniel Balster",
+  "type": "module",
+  "main": "./dist/prompt-preprocessor.js",
+  "exports": {
+    ".": {
+      "import": "./dist/prompt-preprocessor.js",
+      "types": "./dist/prompt-preprocessor.d.ts"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc",
+    "prepublishOnly": "npm run build",
+    "clean": "rm -rf dist"
+  },
+  "dependencies": {
+    "@kilocode/plugin": "^7.1.20"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.3.14",
+    "@types/node": "^20.0.0",
+    "typescript": "^5.4.0"
+  },
+  "keywords": [
+    "kilo",
+    "opencode",
+    "prompt",
+    "preprocessor",
+    "plugin"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/danielbalster/prompt-preprocessor-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/danielbalster/prompt-preprocessor-plugin/issues"
+  },
+  "homepage": "https://github.com/danielbalster/prompt-preprocessor-plugin#readme",
+  "publishConfig": {
+    "access": "public"
+  }
+}
