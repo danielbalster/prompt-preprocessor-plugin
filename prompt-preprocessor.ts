@@ -1,6 +1,11 @@
 import type { Plugin } from "@kilocode/plugin"
 import { existsSync } from "fs"
+import { resolve, isAbsolute } from "path"
 import { spawnSync } from "child_process"
+
+function resolvePath(p: string): string {
+  return isAbsolute(p) ? p : resolve(workspaceDir, p)
+}
 
 function expandEnvVars(text: string): string {
   return text.replace(/\$\{(\w+)(?::([^}]*))?\}/g, (match, name, defaultValue) => {
@@ -108,7 +113,7 @@ async function readPath(path: string): Promise<string> {
     }
     return await res.text()
   }
-  const file = Bun.file(path)
+  const file = Bun.file(resolvePath(path))
   if (!(await file.exists())) {
     throw new Error(`file not found: ${path}`)
   }
@@ -341,7 +346,7 @@ class ExprParser {
         )
       }
       this.advance()
-      return existsSync(path)
+      return existsSync(resolvePath(path))
     }
 
     if (this.peek().type === "VAR") {
@@ -530,17 +535,22 @@ function preprocessConditionals(text: string): string {
 
 // ── plugin ────────────────────────────────────────────────────────────
 
-const PromptPreprocessor: Plugin = async () => ({
-  "experimental.chat.system.transform": async (_input, output) => {
-    for (let i = 0; i < output.system.length; i++) {
-      const defined = processDefines(output.system[i])
-      const included = await resolveIncludes(defined, [], 0)
-      const shelled = await processShellDirectives(included)
-      const expanded = expandEnvVars(shelled)
-      const conditioned = preprocessConditionals(expanded)
-      output.system[i] = processErrors(conditioned)
-    }
-  },
-})
+let workspaceDir = process.cwd()
+
+const PromptPreprocessor: Plugin = async () => {
+  workspaceDir = process.cwd()
+  return {
+    "experimental.chat.system.transform": async (_input, output) => {
+      for (let i = 0; i < output.system.length; i++) {
+        const defined = processDefines(output.system[i])
+        const included = await resolveIncludes(defined, [], 0)
+        const shelled = await processShellDirectives(included)
+        const expanded = expandEnvVars(shelled)
+        const conditioned = preprocessConditionals(expanded)
+        output.system[i] = processErrors(conditioned)
+      }
+    },
+  }
+}
 
 export default PromptPreprocessor

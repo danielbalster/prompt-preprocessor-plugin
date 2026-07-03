@@ -1,6 +1,6 @@
 {
   "name": "@dbalster/prompt-preprocessor",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Kilo/OpenCode TypeScript plugin that preprocesses skills and system prompts before they reach the AI model",
   "license": "MIT",
   "author": "Daniel Balster",
