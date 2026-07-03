@@ -533,11 +533,18 @@ function preprocessConditionals(text: string): string {
 const PromptPreprocessor: Plugin = async () => ({
   "experimental.chat.system.transform": async (_input, output) => {
     for (let i = 0; i < output.system.length; i++) {
-      const defined = processDefines(output.system[i])
+      const raw = output.system[i]
+      console.error("[pp] --- stage 1: processDefines ---")
+      const defined = processDefines(raw)
+      console.error("[pp] --- stage 2: resolveIncludes ---")
       const included = await resolveIncludes(defined, [], 0)
+      console.error("[pp] --- stage 3: processShellDirectives ---")
       const shelled = await processShellDirectives(included)
+      console.error("[pp] --- stage 4: expandEnvVars ---")
       const expanded = expandEnvVars(shelled)
+      console.error("[pp] --- stage 5: preprocessConditionals ---")
       const conditioned = preprocessConditionals(expanded)
+      console.error("[pp] --- stage 6: processErrors ---")
       output.system[i] = processErrors(conditioned)
     }
   },
