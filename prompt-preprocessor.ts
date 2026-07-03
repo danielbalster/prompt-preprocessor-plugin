@@ -325,6 +325,11 @@ class ExprParser {
       this.advance()
       const vt = this.peek()
       if (vt.type !== "STR") {
+        if (vt.type === "NUM" && vt.value.startsWith('"')) {
+          throw new Error(
+            `prompt-preprocessor: unclosed string literal: ${vt.value}`,
+          )
+        }
         throw new Error(
           `prompt-preprocessor: expected path string after exists( but got ${this.describeToken(vt)}`,
         )
