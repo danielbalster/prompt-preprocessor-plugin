@@ -1,10 +1,74 @@
 import type { Plugin } from "@kilocode/plugin"
+import { existsSync } from "fs"
+import { spawnSync } from "child_process"
 
 function expandEnvVars(text: string): string {
-  return text.replace(/\$\{(\w+)\}/g, (match, name) => {
+  return text.replace(/\$\{(\w+)(?::([^}]*))?\}/g, (match, name, defaultValue) => {
     const value = process.env[name]
-    return value !== undefined ? value : match
+    if (value !== undefined) return value
+    if (defaultValue !== undefined) return defaultValue
+    return match
   })
+}
+
+function processErrors(text: string): string {
+  const re = /^\s*!error\s+(.*)\s*$/
+  const lines = text.split("\n")
+  const out: string[] = []
+  for (const line of lines) {
+    const m = line.match(re)
+    if (m) {
+      throw new Error(`prompt-preprocessor: ${m[1]}`)
+    }
+    out.push(line)
+  }
+  return out.join("\n")
+}
+
+function processDefines(text: string): string {
+  const re = /^\s*!define\s+(\w+)\s+(.+)$/
+  const lines = text.split("\n")
+  const out: string[] = []
+  for (const line of lines) {
+    const m = line.match(re)
+    if (m) {
+      let value = m[2]!.trim()
+      if (value.startsWith('"') && value.endsWith('"')) {
+        value = value.slice(1, -1)
+      }
+      process.env[m[1]!] = value
+      continue
+    }
+    out.push(line)
+  }
+  return out.join("\n")
+}
+
+async function processShellDirectives(text: string): Promise<string> {
+  const re = /^\s*!shell\s*(>1|>2|>)?\s+(.+)$/
+  const lines = text.split("\n")
+  const out: string[] = []
+  for (const line of lines) {
+    const m = line.match(re)
+    if (!m) {
+      out.push(line)
+      continue
+    }
+    const redirect = m[1] ?? ""
+    const command = m[2]!
+    const result = spawnSync("sh", ["-c", command], { encoding: "utf-8" })
+    const stdout = (result.stdout ?? "").replace(/\n+$/, "")
+    const stderr = (result.stderr ?? "").replace(/\n+$/, "")
+    if (redirect === ">1") {
+      out.push(stdout)
+    } else if (redirect === ">2") {
+      out.push(stderr)
+    } else if (redirect === ">") {
+      const combined = [stdout, stderr].filter(Boolean).join("\n")
+      if (combined) out.push(combined)
+    }
+  }
+  return out.join("\n")
 }
 
 // ── conditional preprocessor: helpers ─────────────────────────────────
@@ -29,7 +93,7 @@ function isVarTruthy(name: string): boolean {
 
 // ── include resolution ──────────────────────────────────────────────
 
-const RE_INCLUDE = /^\s*\.include\s+"([^"\n]+)"\s*$/
+const RE_INCLUDE = /^\s*!include\s+"([^"\n]+)"\s*$/
 const MAX_INCLUDE_DEPTH = 10
 
 function isURL(path: string): boolean {
@@ -59,7 +123,7 @@ async function resolveIncludes(
   if (depth > MAX_INCLUDE_DEPTH) {
     throw new Error(
       `max include depth (${MAX_INCLUDE_DEPTH}) exceeded while resolving ` +
-      `.include "${stack[stack.length - 1] ?? "(root)"}"`,
+      `!include "${stack[stack.length - 1] ?? "(root)"}"`,
     )
   }
 
@@ -89,7 +153,7 @@ async function resolveIncludes(
         throw err
       }
       const msg = err instanceof Error ? err.message : String(err)
-      throw new Error(`prompt-preprocessor: .include "${path}" failed — ${msg}`)
+      throw new Error(`prompt-preprocessor: !include "${path}" failed — ${msg}`)
     }
   }
 
@@ -103,20 +167,23 @@ async function resolveIncludes(
 //   or_expr    := and_expr ("||" and_expr)*
 //   and_expr   := unary ("&&" unary)*
 //   unary      := "!" unary | primary
-//   primary    := "(" expr ")" | "$" ID (OP value)?   (*)
-//
-// (*) when OP is absent, the expression evaluates to isVarTruthy(ID).
+//   primary    := "(" expr ")" |
+//                 "$" ID (OP value)? |
+//                 "defined(" ID ")" |
+//                 "exists(" STR ")"
 
 type TokenType =
-  | "VAR"    // $identifier
-  | "OP"     // == != >= <= > < ~
-  | "STR"    // "…"
-  | "NUM"    // unquoted token (number or bare word)
-  | "NOT"    // !
-  | "AND"    // &&
-  | "OR"     // ||
-  | "LP"     // (
-  | "RP"     // )
+  | "VAR"      // $identifier
+  | "OP"       // == != >= <= > < ~
+  | "STR"      // "…"
+  | "NUM"      // unquoted token (number or bare word)
+  | "NOT"      // !
+  | "AND"      // &&
+  | "OR"       // ||
+  | "LP"       // (
+  | "RP"       // )
+  | "DEFINED"  // defined(
+  | "EXISTS"   // exists(
   | "EOF"
 
 interface Token {
@@ -125,23 +192,24 @@ interface Token {
 }
 
 const TOKEN_RE =
-  /(\$\w+)|(>=|<=|!=|==|>|<|~)|(&&)|(\|\|)|([!()])|("(?:[^"\\]|\\.)*")|(\S+)/g
+  /(\$\w+)|(defined\()|(exists\()|(>=|<=|!=|==|>|<|~)|(&&)|(\|\|)|([!()])|("(?:[^"\\]|\\.)*")|([^()\s]+)/g
 
 function tokenize(expr: string): Token[] {
   const tokens: Token[] = []
-  // defensive copy — a /g regex shared across calls would cache lastIndex
   const re = new RegExp(TOKEN_RE.source, "g")
   let m: RegExpExecArray | null
   while ((m = re.exec(expr)) !== null) {
     if (m[1]) tokens.push({ type: "VAR", value: m[1] })
-    else if (m[2]) tokens.push({ type: "OP", value: m[2] })
-    else if (m[3]) tokens.push({ type: "AND", value: m[3] })
-    else if (m[4]) tokens.push({ type: "OR", value: m[4] })
-    else if (m[5] === "!") tokens.push({ type: "NOT", value: m[5] })
-    else if (m[5] === "(") tokens.push({ type: "LP", value: m[5] })
-    else if (m[5] === ")") tokens.push({ type: "RP", value: m[5] })
-    else if (m[6]) tokens.push({ type: "STR", value: m[6] })
-    else if (m[7]) tokens.push({ type: "NUM", value: m[7] })
+    else if (m[2]) tokens.push({ type: "DEFINED", value: m[2] })
+    else if (m[3]) tokens.push({ type: "EXISTS", value: m[3] })
+    else if (m[4]) tokens.push({ type: "OP", value: m[4] })
+    else if (m[5]) tokens.push({ type: "AND", value: m[5] })
+    else if (m[6]) tokens.push({ type: "OR", value: m[6] })
+    else if (m[7] === "!") tokens.push({ type: "NOT", value: m[7] })
+    else if (m[7] === "(") tokens.push({ type: "LP", value: m[7] })
+    else if (m[7] === ")") tokens.push({ type: "RP", value: m[7] })
+    else if (m[8]) tokens.push({ type: "STR", value: m[8] })
+    else if (m[9]) tokens.push({ type: "NUM", value: m[9] })
   }
   tokens.push({ type: "EOF", value: "" })
   return tokens
@@ -176,6 +244,8 @@ class ExprParser {
       case "OR": return '"||"'
       case "LP": return '"("'
       case "RP": return '")"'
+      case "DEFINED": return '"defined("'
+      case "EXISTS": return '"exists("'
       default: return `"${t.value}"`
     }
   }
@@ -222,19 +292,55 @@ class ExprParser {
 
   private parsePrimary(): boolean {
     if (this.peek().type === "LP") {
-      this.advance() // (
+      this.advance()
       const result = this.parseOr()
       if (this.peek().type !== "RP") {
         throw new Error(
           `prompt-preprocessor: expected ')' but got ${this.describeToken(this.peek())}`,
         )
       }
-      this.advance() // )
+      this.advance()
       return result
     }
 
+    if (this.peek().type === "DEFINED") {
+      this.advance()
+      const vt = this.peek()
+      if (vt.type !== "NUM") {
+        throw new Error(
+          `prompt-preprocessor: expected variable name after defined( but got ${this.describeToken(vt)}`,
+        )
+      }
+      const varName = this.advance().value
+      if (this.peek().type !== "RP") {
+        throw new Error(
+          `prompt-preprocessor: expected ')' after defined(${varName} but got ${this.describeToken(this.peek())}`,
+        )
+      }
+      this.advance()
+      return isVarDefined(varName)
+    }
+
+    if (this.peek().type === "EXISTS") {
+      this.advance()
+      const vt = this.peek()
+      if (vt.type !== "STR") {
+        throw new Error(
+          `prompt-preprocessor: expected path string after exists( but got ${this.describeToken(vt)}`,
+        )
+      }
+      const path = this.advance().value.slice(1, -1)
+      if (this.peek().type !== "RP") {
+        throw new Error(
+          `prompt-preprocessor: expected ')' after exists("${path}" but got ${this.describeToken(this.peek())}`,
+        )
+      }
+      this.advance()
+      return existsSync(path)
+    }
+
     if (this.peek().type === "VAR") {
-      const varName = this.advance().value.slice(1) // strip $
+      const varName = this.advance().value.slice(1)
 
       if (this.peek().type === "OP") {
         const op = this.advance().value
@@ -252,7 +358,7 @@ class ExprParser {
     }
 
     throw new Error(
-      `prompt-preprocessor: unexpected ${this.describeToken(this.peek())} in expression, expected $VAR or '('`,
+      `prompt-preprocessor: unexpected ${this.describeToken(this.peek())} in expression, expected $VAR, defined(, exists(, or '('`,
     )
   }
 
@@ -304,8 +410,8 @@ function evaluateExpression(expr: string): boolean {
 // ── conditional preprocessor: line-by-line engine ─────────────────────
 
 const RE_DIRECTIVE =
-  /^\s*\.(ifndef|elifndef|ifdef|elifdef|if|elif|else|endif)(?:\s+(.*))?\s*$/
-const RE_VAR_ONLY = /^\$(\w+)$/
+  /^\s*!(ifndef|elifndef|ifdef|elifdef|if|elif|else|endif)(?:\s+(.*))?\s*$/
+const RE_VAR_ONLY = /^\$?(\w+)$/
 
 function preprocessConditionals(text: string): string {
   const lines = text.split("\n")
@@ -353,7 +459,7 @@ function preprocessConditionals(text: string): string {
       case "elifndef": {
         if (stack.length === 0) {
           throw new Error(
-            `prompt-preprocessor: .${directive} without matching .if: ${rawLine.trim()}`,
+            `prompt-preprocessor: !${directive} without matching !if: ${rawLine.trim()}`,
           )
         }
         const prev = stack.pop()!
@@ -381,7 +487,7 @@ function preprocessConditionals(text: string): string {
       case "else": {
         if (stack.length === 0) {
           throw new Error(
-            `prompt-preprocessor: .else without matching .if: ${rawLine.trim()}`,
+            `prompt-preprocessor: !else without matching !if: ${rawLine.trim()}`,
           )
         }
         const prev = stack.pop()!
@@ -399,7 +505,7 @@ function preprocessConditionals(text: string): string {
       case "endif": {
         if (stack.length === 0) {
           throw new Error(
-            `prompt-preprocessor: .endif without matching .if: ${rawLine.trim()}`,
+            `prompt-preprocessor: !endif without matching !if: ${rawLine.trim()}`,
           )
         }
         stack.pop()
@@ -410,7 +516,7 @@ function preprocessConditionals(text: string): string {
 
   if (stack.length > 0) {
     throw new Error(
-      `prompt-preprocessor: ${stack.length} unclosed .if block(s) at end of input`,
+      `prompt-preprocessor: ${stack.length} unclosed !if block(s) at end of input`,
     )
   }
 
@@ -422,8 +528,11 @@ function preprocessConditionals(text: string): string {
 const PromptPreprocessor: Plugin = async () => ({
   "experimental.chat.system.transform": async (_input, output) => {
     for (let i = 0; i < output.system.length; i++) {
-      const included = await resolveIncludes(output.system[i], [], 0)
-      const expanded = expandEnvVars(included)
+      const defined = processDefines(output.system[i])
+      const included = await resolveIncludes(defined, [], 0)
+      const shelled = await processShellDirectives(included)
+      const checked = processErrors(shelled)
+      const expanded = expandEnvVars(checked)
       output.system[i] = preprocessConditionals(expanded)
     }
   },
