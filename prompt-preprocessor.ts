@@ -3,6 +3,8 @@ import { existsSync } from "fs"
 import { resolve, isAbsolute } from "path"
 import { spawnSync } from "child_process"
 
+let workspaceDir = ""
+
 function resolvePath(p: string): string {
   return isAbsolute(p) ? p : resolve(workspaceDir, p)
 }
@@ -269,7 +271,6 @@ class ExprParser {
     let left = this.parseAnd()
     while (this.peek().type === "OR") {
       this.advance()
-      // pre-evaluate to avoid JS || short-circuit skipping token consumption
       const r = this.parseAnd()
       left = left || r
     }
@@ -280,7 +281,6 @@ class ExprParser {
     let left = this.parseUnary()
     while (this.peek().type === "AND") {
       this.advance()
-      // pre-evaluate to avoid JS && short-circuit skipping token consumption
       const r = this.parseUnary()
       left = left && r
     }
@@ -534,8 +534,6 @@ function preprocessConditionals(text: string): string {
 }
 
 // ── plugin ────────────────────────────────────────────────────────────
-
-let workspaceDir = process.cwd()
 
 const PromptPreprocessor: Plugin = async () => {
   workspaceDir = process.cwd()
