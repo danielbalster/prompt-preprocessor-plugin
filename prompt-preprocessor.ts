@@ -536,9 +536,9 @@ const PromptPreprocessor: Plugin = async () => ({
       const defined = processDefines(output.system[i])
       const included = await resolveIncludes(defined, [], 0)
       const shelled = await processShellDirectives(included)
-      const checked = processErrors(shelled)
-      const expanded = expandEnvVars(checked)
-      output.system[i] = preprocessConditionals(expanded)
+      const expanded = expandEnvVars(shelled)
+      const conditioned = preprocessConditionals(expanded)
+      output.system[i] = processErrors(conditioned)
     }
   },
 })

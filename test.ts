@@ -305,6 +305,22 @@ console.log("Test 35: !if VAR != string")
   assertEq(result, "RELEASE", "var not equal")
 }
 
+// ── Test 36: !error inside false branch must NOT fire ─────────────────
+console.log("Test 36: !error inside false branch silent")
+{
+  const result = await run('!if !exists("prompt-preprocessor.ts")\n!error should not fire\n!else\nall good\n!endif')
+  assertEq(result, "all good", "error in false branch")
+}
+
+// ── Test 37: !error inside true branch DOES fire ──────────────────────
+console.log("Test 37: !error inside true branch fires")
+{
+  await assertThrows(
+    () => run('!if exists("prompt-preprocessor.ts")\n!error yes fire\n!else\nno\n!endif'),
+    "error in true branch fires"
+  )
+}
+
 // ── Summary ──────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

@@ -3,7 +3,7 @@
 > **100% AI-generated.** This project was requested as: build a TypeScript plugin
 > that preprocesses skills and system prompts before they reach the AI model.
 
-A [Kilo](https://kilo.ai) / OpenCode TypeScript plugin that preprocesses prompt text through six stages: **define → include resolution → shell → error → variable expansion → conditional stripping**.
+A [Kilo](https://kilo.ai) / OpenCode TypeScript plugin that preprocesses prompt text through six stages: **define → include resolution → shell → variable expansion → conditional stripping → error check**.
 
 ## Installation
 
@@ -26,9 +26,9 @@ raw prompt text
   → processDefines          !define directives (sets env vars)
   → resolveIncludes         !include directives (async)
   → processShellDirectives  !shell directives (async)
-  → processErrors           !error directives
   → expandEnvVars           ${VARIABLE}, ${VAR:default} → value
   → preprocessConditionals  !if / !elif / !else / !endif
+  → processErrors           !error directives (after conditionals)
 final prompt text
 ```
 
