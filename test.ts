@@ -93,7 +93,7 @@ console.log("Test 6: ${VAR:default} defined")
   assertEq(result, "Hello real", "defined overrides default")
 }
 
-// ── Test 7: ${VAR} without default (undefined ⇒ unchanged) ─────────
+// ── Test 7: ${VAR} without default (undefined -> unchanged) ────────
 console.log("Test 7: ${VAR} without default undefined")
 {
   delete process.env.NOEXIST
@@ -167,31 +167,23 @@ console.log("Test 16: exists() folder")
   assertEq(result, "folder exists", "exists folder")
 }
 
-// ── Test 17: !ifdef VAR (bare word, no $) ──────────────────────────
-console.log("Test 17: !ifdef VAR (bare word)")
+// ── Test 17: !ifdef VAR (bare word) ──────────────────────────────────
+console.log("Test 17: !ifdef VAR")
 {
   const result = await run("!ifdef TEST17\nVAR present\n!else\nVAR absent\n!endif", { TEST17: "" })
   assertEq(result, "VAR present", "ifdef bare word")
 }
 
-// ── Test 18: !ifdef $VAR (backward compat, with $) ────────────────
-console.log("Test 18: !ifdef $VAR (backward compat)")
+// ── Test 18: !ifndef VAR (bare word) ─────────────────────────────────
+console.log("Test 18: !ifndef VAR")
 {
   delete process.env.TEST18
-  const result = await run("!ifndef $TEST18\nVAR absent\n!else\nVAR present\n!endif")
-  assertEq(result, "VAR absent", "ifndef with dollar")
-}
-
-// ── Test 19: !ifndef VAR (bare word) ───────────────────────────────
-console.log("Test 19: !ifndef VAR (bare word)")
-{
-  delete process.env.TEST19
-  const result = await run("!ifndef TEST19\nVAR absent\n!else\nVAR present\n!endif")
+  const result = await run("!ifndef TEST18\nVAR absent\n!else\nVAR present\n!endif")
   assertEq(result, "VAR absent", "ifndef bare word")
 }
 
-// ── Test 20: !error directive ──────────────────────────────────────
-console.log("Test 20: !error directive")
+// ── Test 19: !error directive ────────────────────────────────────────
+console.log("Test 19: !error directive")
 {
   await assertThrows(
     () => run("some text\n!error stop right here\nmore text"),
@@ -199,77 +191,120 @@ console.log("Test 20: !error directive")
   )
 }
 
-// ── Test 21: !shell silent (no output) ─────────────────────────────
-console.log("Test 21: !shell silent")
+// ── Test 20: !shell silent (no output) ───────────────────────────────
+console.log("Test 20: !shell silent")
 {
   const result = await run("before\n!shell echo hello\nmiddle\n!shell echo world\nafter")
   assertEq(result, "before\nmiddle\nafter", "shell silent")
 }
 
-// ── Test 22: !shell>1 stdout only ──────────────────────────────────
-console.log("Test 22: !shell>1 stdout")
+// ── Test 21: !shell>1 stdout only ────────────────────────────────────
+console.log("Test 21: !shell>1 stdout")
 {
   const result = await run("!shell>1 echo stdout only")
   assertEq(result, "stdout only", "shell stdout")
 }
 
-// ── Test 23: !shell>2 stderr only ──────────────────────────────────
-console.log("Test 23: !shell>2 stderr")
+// ── Test 22: !shell>2 stderr only ────────────────────────────────────
+console.log("Test 22: !shell>2 stderr")
 {
   const result = await run("!shell>2 sh -c 'echo stderr only >&2'")
   assertEq(result, "stderr only", "shell stderr")
 }
 
-// ── Test 24: !shell> stdout and stderr ─────────────────────────────
-console.log("Test 24: !shell> both")
+// ── Test 23: !shell> stdout and stderr ───────────────────────────────
+console.log("Test 23: !shell> both")
 {
   const result = await run("!shell> sh -c 'echo stdout; echo stderr >&2'")
   assertEq(result, "stdout\nstderr", "shell both")
 }
 
-// ── Test 25: !shell>1 with no output ───────────────────────────────
-console.log("Test 25: !shell>1 no output")
+// ── Test 24: !shell>1 with no output ─────────────────────────────────
+console.log("Test 24: !shell>1 no output")
 {
   const result = await run("!shell>1 true")
   assertEq(result, "", "shell no output")
 }
 
-// ── Test 26: Combined !define + !ifdef ─────────────────────────────
-console.log("Test 26: !define + !ifdef")
+// ── Test 25: Combined !define + !ifdef ───────────────────────────────
+console.log("Test 25: !define + !ifdef")
 {
   const result = await run("!define MODE debug\n!ifdef MODE\nenabled\n!else\ndisabled\n!endif")
   assertEq(result, "enabled", "define then ifdef")
 }
 
-// ── Test 27: !define + !if expression ──────────────────────────────
-console.log("Test 27: !define + !if expression")
+// ── Test 26: !if expression with string comparison ───────────────────
+console.log("Test 26: !if VAR == string")
 {
-  const result = await run("!define VER 5\n!if $VER >= 3\nok\n!else\nnok\n!endif")
-  assertEq(result, "ok", "define then if compare")
+  const result = await run('!if MODE == "debug"\nDEBUG\n!else\nRELEASE\n!endif', { MODE: "debug" })
+  assertEq(result, "DEBUG", "var equals string")
 }
 
-// ── Test 28: defined() with !elif ──────────────────────────────────
-console.log("Test 28: defined() in !elif")
+// ── Test 27: !if expression with numeric comparison ──────────────────
+console.log("Test 27: !if VAR >= number")
 {
-  delete process.env.TEST28
-  const result = await run("!if defined(TEST28)\nfirst\n!elif defined(PATH)\nsecond\n!else\nthird\n!endif")
+  const result = await run("!if VER >= 3\nok\n!else\nnok\n!endif", { VER: "5" })
+  assertEq(result, "ok", "var >= number")
+}
+
+// ── Test 28: !if VAR truthy shorthand ────────────────────────────────
+console.log("Test 28: !if VAR truthy")
+{
+  const result = await run("!if DEBUG\nenabled\n!else\ndisabled\n!endif", { DEBUG: "1" })
+  assertEq(result, "enabled", "truthy var")
+}
+
+// ── Test 29: !if !VAR shorthand (empty -> false) ─────────────────────
+console.log("Test 29: !if !VAR falsey")
+{
+  delete process.env.DEBUG
+  const result = await run("!if !DEBUG\ndisabled\n!else\nenabled\n!endif")
+  assertEq(result, "disabled", "not falsey var")
+}
+
+// ── Test 30: !if VAR contains substring ~ ────────────────────────────
+console.log("Test 30: !if VAR ~ substring")
+{
+  const result = await run('!if TEXT ~ "hello"\nmatch\n!else\nno match\n!endif', { TEXT: "hello world" })
+  assertEq(result, "match", "substring match")
+}
+
+// ── Test 31: defined() with !elif ────────────────────────────────────
+console.log("Test 31: defined() in !elif")
+{
+  delete process.env.TEST31
+  const result = await run("!if defined(TEST31)\nfirst\n!elif defined(PATH)\nsecond\n!else\nthird\n!endif")
   assertEq(result, "second", "defined in elif")
 }
 
-// ── Test 29: exists() with !elif ────────────────────────────────────
-console.log("Test 29: exists() in !elif")
+// ── Test 32: exists() with !elif ─────────────────────────────────────
+console.log("Test 32: exists() in !elif")
 {
   const result = await run('!if exists("no-such-file.txt")\nfirst\n!elif exists("prompt-preprocessor.ts")\nsecond\n!else\nthird\n!endif')
   assertEq(result, "second", "exists in elif")
 }
 
-// ── Test 30: Multiple !define directives ──────────────────────────
-console.log("Test 30: multiple !define")
+// ── Test 33: Multiple !define directives ─────────────────────────────
+console.log("Test 33: multiple !define")
 {
   const result = await run("!define A 1\n!define B 2\n${A} + ${B}")
   assertEq(result, "1 + 2", "multiple defines")
 }
 
-// ── Summary ────────────────────────────────────────────────────────
+// ── Test 34: Compound expression with functions ──────────────────────
+console.log("Test 34: compound expression")
+{
+  const result = await run("!if defined(A) || defined(B)\nfound\n!else\nnot found\n!endif", { A: "1" })
+  assertEq(result, "found", "compound or")
+}
+
+// ── Test 35: !if VAR != string ───────────────────────────────────────
+console.log("Test 35: !if VAR != string")
+{
+  const result = await run('!if MODE != "debug"\nRELEASE\n!else\nDEBUG\n!endif', { MODE: "release" })
+  assertEq(result, "RELEASE", "var not equal")
+}
+
+// ── Summary ──────────────────────────────────────────────────────────
 console.log(`\n${passed} passed, ${failed} failed`)
 if (failed > 0) process.exit(1)

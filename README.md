@@ -68,15 +68,15 @@ Expands `${NAME}` and `${NAME:default}` patterns to the value of `process.env.NA
 | `${FOO}` | Replaced with value of `FOO` |
 | `${FOO:fallback}` | Value of `FOO`, or `"fallback"` if undefined |
 | `${UNDEFINED}` | Left unchanged |
-| `$FOO` | NOT expanded by this stage — used in expressions |
+| `FOO` | NOT expanded by this stage — used in expressions |
 
 Expansion runs **after** includes and **before** conditionals, so condition values can use `${…}`:
 
 ```
-!if $VERSION >= ${MIN_VERSION}
+!if VERSION >= ${MIN_VERSION}
 ```
 
-`${MIN_VERSION}` expands first (e.g. to `5`), then `$VERSION >= 5` is evaluated.
+`${MIN_VERSION}` expands first (e.g. to `5`), then `VERSION >= 5` is evaluated.
 
 ---
 
@@ -87,17 +87,18 @@ Each directive must appear at the beginning of a line (leading whitespace is ign
 | Directive | Meaning |
 |---|---|
 | `!if EXPR` | Open block; include body if EXPR is true |
-| `!if $VAR` | Shorthand — true if `$VAR` is defined **and** non-empty |
+| `!if VAR` | Shorthand — true if `VAR` is defined **and** non-empty |
 | `!ifdef VAR` | True if `VAR` exists in the environment (may be empty) |
 | `!ifndef VAR` | True if `VAR` is **not** defined |
 | `!elif EXPR` | Else-if branch; evaluated only when no prior branch matched |
-| `!elif $VAR` | Else-if truthy shorthand |
+| `!elif VAR` | Else-if truthy shorthand |
 | `!elifdef VAR` | Else-if defined check |
 | `!elifndef VAR` | Else-if not-defined check |
 | `!else` | Fallback branch when no condition matched |
 | `!endif` | Close the conditional block |
 
-Variable names in `!ifdef` / `!ifndef` / `!elifdef` / `!elifndef` may be written with or without a `$` prefix: both `!ifdef FOO` and `!ifdef $FOO` are accepted.
+Variable names in `!ifdef` / `!ifndef` / `!elifdef` / `!elifndef` are written
+without a `$` prefix: `!ifdef FOO` matches if `FOO` is defined in the environment.
 
 Blocks can be **nested** arbitrarily.
 
@@ -111,29 +112,29 @@ Expressions are used with `!if` and `!elif`. The grammar supports comparison ope
 
 | Operator | Meaning | Example |
 |---|---|---|
-| `==` | Equal (string or numeric) | `!if $FOO == "bar"` |
-| `!=` | Not equal (string or numeric) | `!if $FOO != "baz"` |
-| `>` | Greater than (numeric) | `!if $NUM > 3` |
-| `<` | Less than (numeric) | `!if $NUM < 10` |
-| `>=` | Greater or equal (numeric) | `!if $NUM >= 3` |
-| `<=` | Less or equal (numeric) | `!if $NUM <= 10` |
-| `~` | Substring / contains (string) | `!if $FOO ~ "ar"` |
+| `==` | Equal (string or numeric) | `!if FOO == "bar"` |
+| `!=` | Not equal (string or numeric) | `!if FOO != "baz"` |
+| `>` | Greater than (numeric) | `!if NUM > 3` |
+| `<` | Less than (numeric) | `!if NUM < 10` |
+| `>=` | Greater or equal (numeric) | `!if NUM >= 3` |
+| `<=` | Less or equal (numeric) | `!if NUM <= 10` |
+| `~` | Substring / contains (string) | `!if FOO ~ "ar"` |
 
 - **Quoted values** (`"bar"`) are compared as **strings**.
 - **Bare values** (`3`, `42`) are compared as **numbers**. If either side is not parseable as a float the comparison falls back to string equality.
-- `>` `<` `>=` `<=` always compare numerically. Use `!if $VAR` for zero/non-empty checks.
+- `>` `<` `>=` `<=` always compare numerically. Use `!if VAR` for zero/non-empty checks.
 - `~` performs a **case-sensitive substring** check.
 
 ### Logical Operators (precedence high → low)
 
 | Operator | Precedence | Example |
 |---|---|---|
-| `!` (not) | highest | `!if !$FOO` |
-| `&&` (and) | medium | `!if $A && $B` |
-| `\|\|` (or) | lowest | `!if $A \|\| $B` |
-| `(…)` (grouping) | overriding | `!if ($A \|\| $B) && $C` |
+| `!` (not) | highest | `!if !FOO` |
+| `&&` (and) | medium | `!if A && B` |
+| `\|\|` (or) | lowest | `!if A \|\| B` |
+| `(…)` (grouping) | overriding | `!if (A \|\| B) && C` |
 
-- `!` binds to the immediately following expression. `!if ! $FOO == "bar"` means `!($FOO == "bar")`.
+- `!` binds to the immediately following expression. `!if ! FOO == "bar"` means `!(FOO == "bar")`.
 - `&&` and `\|\|` are **non-short-circuit** — all operands are always evaluated. This ensures trailing tokens are rejected.
 
 ### Built-in Functions
@@ -152,10 +153,10 @@ Both functions support negation with `!`:
 
 | Form | Equivalent condition |
 |---|---|
-| `!if $FOO` | True if `FOO` is defined and non-empty |
-| `!if !$FOO` | True if `FOO` is undefined or empty |
-| `!if $A && $B` | Both `A` and `B` are truthy |
-| `!if $A \|\| $B` | `A` or `B` is truthy |
+| `!if FOO` | True if `FOO` is defined and non-empty |
+| `!if !FOO` | True if `FOO` is undefined or empty |
+| `!if A && B` | Both `A` and `B` are truthy |
+| `!if A \|\| B` | `A` or `B` is truthy |
 
 ---
 
@@ -188,7 +189,7 @@ Sets environment variables for use in later `${VAR}` expansions and `!if` expres
 ```
 !define PROJECT "my-app"
 !define VERSION 3
-!if $VERSION >= 2
+!if VERSION >= 2
 Using ${PROJECT} v${VERSION}
 !endif
 ```
@@ -210,7 +211,7 @@ Halts preprocessing with a fatal error message. The plugin throws, causing Kilo 
 ### Basic Conditional
 
 ```
-!if $MODE == "debug"
+!if MODE == "debug"
 verbose debug output here
 !else
 production mode
@@ -224,7 +225,7 @@ production mode
 Windows-specific instructions
 !elifdef MACOS
 macOS-specific instructions
-!elif $LINUX == "1"
+!elif LINUX == "1"
 Linux-specific instructions
 !else
 Unsupported platform
@@ -244,7 +245,7 @@ Note: `!include` is resolved **before** conditionals, so the include always happ
 ### Compound Expression
 
 ```
-!if !($MODE == "release") && ($VERBOSITY >= 2 || !defined(QUIET))
+!if !(MODE == "release") && (VERBOSITY >= 2 || !defined(QUIET))
 extra diagnostics
 !endif
 ```

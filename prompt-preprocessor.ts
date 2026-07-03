@@ -168,15 +168,15 @@ async function resolveIncludes(
 //   and_expr   := unary ("&&" unary)*
 //   unary      := "!" unary | primary
 //   primary    := "(" expr ")" |
-//                 "$" ID (OP value)? |
+//                 ID (OP value)? |
 //                 "defined(" ID ")" |
 //                 "exists(" STR ")"
 
 type TokenType =
-  | "VAR"      // $identifier
+  | "VAR"      // identifier (variable name or bare literal)
   | "OP"       // == != >= <= > < ~
   | "STR"      // "…"
-  | "NUM"      // unquoted token (number or bare word)
+  | "NUM"      // unquoted token that is not a plain word
   | "NOT"      // !
   | "AND"      // &&
   | "OR"       // ||
@@ -192,22 +192,22 @@ interface Token {
 }
 
 const TOKEN_RE =
-  /(\$\w+)|(defined\()|(exists\()|(>=|<=|!=|==|>|<|~)|(&&)|(\|\|)|([!()])|("(?:[^"\\]|\\.)*")|([^()\s]+)/g
+  /(defined\()|(exists\()|(>=|<=|!=|==|>|<|~)|(&&)|(\|\|)|([!()])|(\w+)|("(?:[^"\\]|\\.)*")|(\S+)/g
 
 function tokenize(expr: string): Token[] {
   const tokens: Token[] = []
   const re = new RegExp(TOKEN_RE.source, "g")
   let m: RegExpExecArray | null
   while ((m = re.exec(expr)) !== null) {
-    if (m[1]) tokens.push({ type: "VAR", value: m[1] })
-    else if (m[2]) tokens.push({ type: "DEFINED", value: m[2] })
-    else if (m[3]) tokens.push({ type: "EXISTS", value: m[3] })
-    else if (m[4]) tokens.push({ type: "OP", value: m[4] })
-    else if (m[5]) tokens.push({ type: "AND", value: m[5] })
-    else if (m[6]) tokens.push({ type: "OR", value: m[6] })
-    else if (m[7] === "!") tokens.push({ type: "NOT", value: m[7] })
-    else if (m[7] === "(") tokens.push({ type: "LP", value: m[7] })
-    else if (m[7] === ")") tokens.push({ type: "RP", value: m[7] })
+    if (m[1]) tokens.push({ type: "DEFINED", value: m[1] })
+    else if (m[2]) tokens.push({ type: "EXISTS", value: m[2] })
+    else if (m[3]) tokens.push({ type: "OP", value: m[3] })
+    else if (m[4]) tokens.push({ type: "AND", value: m[4] })
+    else if (m[5]) tokens.push({ type: "OR", value: m[5] })
+    else if (m[6] === "!") tokens.push({ type: "NOT", value: m[6] })
+    else if (m[6] === "(") tokens.push({ type: "LP", value: m[6] })
+    else if (m[6] === ")") tokens.push({ type: "RP", value: m[6] })
+    else if (m[7]) tokens.push({ type: "VAR", value: m[7] })
     else if (m[8]) tokens.push({ type: "STR", value: m[8] })
     else if (m[9]) tokens.push({ type: "NUM", value: m[9] })
   }
@@ -306,7 +306,7 @@ class ExprParser {
     if (this.peek().type === "DEFINED") {
       this.advance()
       const vt = this.peek()
-      if (vt.type !== "NUM") {
+      if (vt.type !== "VAR") {
         throw new Error(
           `prompt-preprocessor: expected variable name after defined( but got ${this.describeToken(vt)}`,
         )
@@ -340,12 +340,12 @@ class ExprParser {
     }
 
     if (this.peek().type === "VAR") {
-      const varName = this.advance().value.slice(1)
+      const varName = this.advance().value
 
       if (this.peek().type === "OP") {
         const op = this.advance().value
         const vt = this.peek()
-        if (vt.type !== "STR" && vt.type !== "NUM") {
+        if (vt.type !== "STR" && vt.type !== "NUM" && vt.type !== "VAR") {
           throw new Error(
             `prompt-preprocessor: expected value after "${op}" but got ${this.describeToken(vt)}`,
           )
@@ -358,7 +358,7 @@ class ExprParser {
     }
 
     throw new Error(
-      `prompt-preprocessor: unexpected ${this.describeToken(this.peek())} in expression, expected $VAR, defined(, exists(, or '('`,
+      `prompt-preprocessor: unexpected ${this.describeToken(this.peek())} in expression, expected VAR, defined(, exists(, or '('`,
     )
   }
 
@@ -411,7 +411,7 @@ function evaluateExpression(expr: string): boolean {
 
 const RE_DIRECTIVE =
   /^\s*!(ifndef|elifndef|ifdef|elifdef|if|elif|else|endif)(?:\s+(.*))?\s*$/
-const RE_VAR_ONLY = /^\$?(\w+)$/
+const RE_VAR_ONLY = /^(\w+)$/
 
 function preprocessConditionals(text: string): string {
   const lines = text.split("\n")
