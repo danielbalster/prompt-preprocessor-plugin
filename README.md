@@ -185,12 +185,16 @@ Sets environment variables for use in later `${VAR}` expansions and `!if` expres
 |---|---|
 | String value | `!define FOO "hello world"` |
 | Numeric value | `!define BAR 42` |
+| Shell command | `!define HOST \`uname -n\`` |
+
+When the value is wrapped in backticks, it is interpreted as a shell command run with `sh -c`. The command's stdout is captured as the variable value with trailing whitespace and newlines stripped.
 
 ```
+!define ARCH `uname -m`
 !define PROJECT "my-app"
 !define VERSION 3
 !if VERSION >= 2
-Using ${PROJECT} v${VERSION}
+Using ${PROJECT} v${VERSION} on ${ARCH}
 !endif
 ```
 

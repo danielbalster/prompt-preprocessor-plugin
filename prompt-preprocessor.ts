@@ -30,19 +30,22 @@ function processErrors(text: string): string {
   return out.join("\n")
 }
 
-function processDefines(text: string): string {
+async function processDefines(text: string): Promise<string> {
   const re = /^\s*!define\s+(\w+)\s+(.+)$/
   const lines = text.split("\n")
   const out: string[] = []
   for (const line of lines) {
     const m = line.match(re)
-    if (m) {
-      let value = m[2]!.trim()
-      if (value.startsWith('"') && value.endsWith('"')) value = value.slice(1, -1)
-      process.env[m[1]!] = value
-      continue
+    if (!m) { out.push(line); continue }
+    let value = m[2]!.trim()
+    if (value.startsWith('"') && value.endsWith('"')) {
+      value = value.slice(1, -1)
+    } else if (value.startsWith("`") && value.endsWith("`")) {
+      const command = value.slice(1, -1)
+      const result = spawnSync("sh", ["-c", command], { encoding: "utf-8" })
+      value = (result.stdout ?? "").replace(/\n+$/, "").trim()
     }
-    out.push(line)
+    process.env[m[1]!] = value
   }
   return out.join("\n")
 }
@@ -323,7 +326,7 @@ const PromptPreprocessor: Plugin = async () => {
   return {
     "experimental.chat.system.transform": async (_input, output) => {
       for (let i = 0; i < output.system.length; i++) {
-        const defined = processDefines(output.system[i])
+        const defined = await processDefines(output.system[i])
         const included = await resolveIncludes(defined, [], 0)
         const shelled = await processShellDirectives(included)
         const expanded = expandEnvVars(shelled)
